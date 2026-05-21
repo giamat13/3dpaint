@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sculptor — 3D Painting Studio</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=DM+Mono:ital,wght@0,300;0,400;1,300&family=Playfair+Display:ital,wght@1,400;1,600&display=swap');
+
+  :root {
+    --ink: #1a1410;
+    --paper: #f4efe8;
+    --paper2: #ede7dc;
+    --accent: #c4622d;
+    --accent2: #7a9e7e;
+    --gold: #c8a96e;
+    --muted: #8c7b6b;
+    --panel: rgba(26,20,16,0.92);
+    --border: rgba(200,169,110,0.25);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'DM Mono', monospace;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* TOP BAR */
+  #topbar {
+    height: 44px;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    gap: 0;
+    z-index: 100;
+    flex-shrink: 0;
+  }
+
+  #logo {
+    font-family: 'Playfair Display', serif;
+    font-style: italic;
+    font-size: 20px;
+    color: var(--gold);
+    letter-spacing: 0.02em;
+    margin-right: 24px;
+    white-space: nowrap;
+  }
+
+  .top-sep { width: 1px; height: 24px; background: var(--border); margin: 0 12px; }
+
+  .top-btn {
+    background: none;
+    border: none;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  .top-btn:hover { color: var(--paper); background: rgba(200,169,110,0.12); }
+  .top-btn.active { color: var(--gold); }
+
+  #mesh-switcher { display: flex; gap: 4px; }
+  .mesh-opt {
+    background: none;
+    border: 1px solid transparent;
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    cursor: pointer;
+    padding: 4px 10px;
+    border-radius: 2px;
+    transition: all 0.15s;
+  }
+  .mesh-opt:hover { color: var(--paper); border-color: var(--border); }
+  .mesh-opt.active { color: var(--gold); border-color: var(--gold); background: rgba(200,169,110,0.08); }
+
+  #spacer { flex: 1; }
+
+  #mode-indicator {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #mode-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--accent2);
+    box-shadow: 0 0 8px var(--accent2);
+  }
+
+  /* LAYOUT */
+  #main-layout {
+    display: flex;
+    flex: 1;
+    overflow: hidden;
+  }
+
+  /* LEFT PANEL - TOOLS */
+  #left-panel {
+    width: 64px;
+    background: var(--panel);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 12px 0;
+    gap: 4px;
+    z-index: 50;
+    flex-shrink: 0;
+  }
+
+  .tool-btn {
+    width: 44px; height: 44px;
+    background: none;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
+    color: var(--muted);
+    font-size: 18px;
+    position: relative;
+  }
+  .tool-btn:hover { color: var(--paper); background: rgba(255,255,255,0.05); border-color: var(--border); }
+  .tool-btn.active { color: var(--gold); background: rgba(200,169,110,0.12); border-color: rgba(200,169,110,0.4); }
+  .tool-btn::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: 52px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+    z-index: 200;
+  }
+  .tool-btn:hover::after { opacity: 1; }
+
+  .tool-sep { width: 30px; height: 1px; background: var(--border); margin: 6px 0; }
+
+  /* CANVAS AREA */
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+    background: #0e0c09;
+  }
+
+  #three-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+    cursor: crosshair;
+  }
+
+  /* Brush cursor overlay */
+  #brush-cursor {
+    position: absolute;
+    border-radius: 50%;
+    border: 1.5px solid rgba(200,169,110,0.8);
+    pointer-events: none;
+    transform: translate(-50%, -50%);
+    display: none;
+    transition: width 0.05s, height 0.05s;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+  }
+
+  /* info overlay */
+  #canvas-info {
+    position: absolute;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(26,20,16,0.75);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 6px 16px;
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.06em;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+
+  /* RIGHT PANEL */
+  #right-panel {
+    width: 220px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    flex-shrink: 0;
+  }
+
+  .panel-section {
+    border-bottom: 1px solid var(--border);
+    padding: 14px;
+  }
+
+  .panel-title {
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  /* Color picker */
+  #color-wheel-wrap {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #color-canvas {
+    border-radius: 50%;
+    cursor: crosshair;
+    border: 2px solid var(--border);
+  }
+
+  #value-slider-wrap {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .slider-label { font-size: 9px; color: var(--muted); letter-spacing: 0.06em; width: 16px; }
+
+  input[type=range] {
+    -webkit-appearance: none;
+    flex: 1;
+    height: 4px;
+    border-radius: 2px;
+    background: linear-gradient(to right, #000, var(--current-color, #c4622d));
+    outline: none;
+    cursor: pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--paper);
+    border: 2px solid var(--gold);
+    cursor: pointer;
+  }
+
+  #current-color-swatch {
+    width: 100%;
+    height: 28px;
+    border-radius: 3px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+  }
+
+  /* Swatches */
+  #swatches {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 4px;
+  }
+
+  .swatch {
+    aspect-ratio: 1;
+    border-radius: 2px;
+    cursor: pointer;
+    border: 1px solid rgba(255,255,255,0.08);
+    transition: transform 0.1s, box-shadow 0.1s;
+  }
+  .swatch:hover { transform: scale(1.15); box-shadow: 0 0 8px rgba(200,169,110,0.4); }
+  .swatch.selected { border-color: var(--gold); transform: scale(1.1); }
+
+  /* Brush settings */
+  .brush-setting { margin-bottom: 10px; }
+  .brush-setting label { font-size: 9px; color: var(--muted); letter-spacing: 0.06em; display: flex; justify-content: space-between; margin-bottom: 5px; }
+  .brush-setting label span { color: var(--gold); }
+  .brush-setting input[type=range] {
+    width: 100%;
+    background: linear-gradient(to right, rgba(200,169,110,0.2), rgba(200,169,110,0.8));
+  }
+
+  /* Layer stack */
+  #layer-list { display: flex; flex-direction: column; gap: 4px; }
+
+  .layer-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 8px;
+    border-radius: 3px;
+    cursor: pointer;
+    border: 1px solid transparent;
+    transition: all 0.12s;
+  }
+  .layer-item:hover { background: rgba(255,255,255,0.04); }
+  .layer-item.active { border-color: rgba(200,169,110,0.35); background: rgba(200,169,110,0.06); }
+
+  .layer-thumb {
+    width: 28px; height: 28px;
+    border-radius: 2px;
+    background: var(--paper2);
+    border: 1px solid var(--border);
+    overflow: hidden;
+    flex-shrink: 0;
+  }
+
+  .layer-name { font-size: 10px; color: var(--paper); flex: 1; }
+  .layer-vis { font-size: 12px; color: var(--muted); cursor: pointer; }
+  .layer-vis:hover { color: var(--paper); }
+
+  /* Symmetry toggle */
+  #sym-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+  .sym-btn {
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 5px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+  .sym-btn:hover { color: var(--paper); border-color: var(--paper); }
+  .sym-btn.active { color: var(--gold); border-color: var(--gold); background: rgba(200,169,110,0.08); }
+
+  /* Wireframe toggle */
+  #view-toggles { display: flex; gap: 6px; }
+  .view-toggle {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    padding: 5px 0;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: all 0.12s;
+    text-align: center;
+  }
+  .view-toggle:hover { color: var(--paper); }
+  .view-toggle.active { color: var(--gold); border-color: var(--gold); }
+
+  /* Undo/redo */
+  #history-btns { display: flex; gap: 6px; }
+  .hist-btn {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    padding: 7px 0;
+    border-radius: 2px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+  }
+  .hist-btn:hover { color: var(--gold); border-color: var(--gold); }
+
+  /* scrollbar */
+  #right-panel::-webkit-scrollbar { width: 4px; }
+  #right-panel::-webkit-scrollbar-track { background: transparent; }
+  #right-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+  /* Save export */
+  #export-btn {
+    width: 100%;
+    background: rgba(196,98,45,0.15);
+    border: 1px solid rgba(196,98,45,0.4);
+    color: var(--accent);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    padding: 9px 0;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  #export-btn:hover { background: rgba(196,98,45,0.25); color: var(--paper); }
+
+  /* Toast */
+  #toast {
+    position: fixed;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: var(--ink);
+    border: 1px solid var(--gold);
+    color: var(--gold);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 8px 20px;
+    border-radius: 3px;
+    opacity: 0;
+    transition: all 0.3s;
+    pointer-events: none;
+    z-index: 999;
+  }
+  #toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div id="logo">Sculptor</div>
+  <div class="top-sep"></div>
+  <div id="mesh-switcher">
+    <button class="mesh-opt active" data-shape="sphere">כדור</button>
+    <button class="mesh-opt" data-shape="plane">מישור</button>
+    <button class="mesh-opt" data-shape="box">קובייה</button>
+    <button class="mesh-opt" data-shape="torus">טורוס</button>
+    <button class="mesh-opt" data-shape="cylinder">גליל</button>
+  </div>
+  <div class="top-sep"></div>
+  <div id="spacer"></div>
+  <div id="mode-indicator">
+    <div id="mode-dot"></div>
+    <span id="mode-text">PAINT</span>
+  </div>
+  &nbsp;&nbsp;
+  <button class="top-btn" id="reset-btn">איפוס סצנה</button>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div id="main-layout">
+
+  <!-- LEFT TOOLS -->
+  <div id="left-panel">
+    <button class="tool-btn active" data-tool="paint" data-tip="צביעה (B)">🖌</button>
+    <button class="tool-btn" data-tool="erase" data-tip="מחיקה (E)">◻</button>
+    <div class="tool-sep"></div>
+    <button class="tool-btn" data-tool="sculpt_pull" data-tip="משיכה (P)">↑</button>
+    <button class="tool-btn" data-tool="sculpt_push" data-tip="דחיפה (D)">↓</button>
+    <button class="tool-btn" data-tool="sculpt_smooth" data-tip="החלקה (S)">≈</button>
+    <button class="tool-btn" data-tool="sculpt_flatten" data-tip="השטחה (F)">▬</button>
+    <button class="tool-btn" data-tool="sculpt_pinch" data-tip="צביטה (N)">⟨⟩</button>
+    <div class="tool-sep"></div>
+    <button class="tool-btn" data-tool="rotate" data-tip="סיבוב מצלמה (R)">⟳</button>
+    <button class="tool-btn" data-tool="pan" data-tip="הזזת מצלמה (G)">✥</button>
+    <button class="tool-btn" data-tool="zoom" data-tip="זום (Z)">⊕</button>
+  </div>
+
+  <!-- CANVAS -->
+  <div id="canvas-wrap">
+    <canvas id="three-canvas"></canvas>
+    <div id="brush-cursor"></div>
+    <div id="canvas-info">LMB: צייר/פסל&nbsp;&nbsp;|&nbsp;&nbsp;RMB/Alt+LMB: סיבוב&nbsp;&nbsp;|&nbsp;&nbsp;Scroll: זום&nbsp;&nbsp;|&nbsp;&nbsp;[ ]: גודל מברשת</div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+
+    <div class="panel-section">
+      <div class="panel-title">צבע</div>
+      <div id="color-wheel-wrap">
+        <canvas id="color-canvas" width="150" height="150"></canvas>
+        <div id="value-slider-wrap">
+          <span class="slider-label">V</span>
+          <input type="range" id="value-slider" min="0" max="100" value="85">
+        </div>
+        <div id="current-color-swatch" title="צבע נוכחי"></div>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">פלטה</div>
+      <div id="swatches"></div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">מברשת</div>
+      <div class="brush-setting">
+        <label>גודל <span id="brush-size-val">30</span></label>
+        <input type="range" id="brush-size" min="5" max="120" value="30">
+      </div>
+      <div class="brush-setting">
+        <label>עוצמה <span id="brush-str-val">80</span></label>
+        <input type="range" id="brush-strength" min="1" max="100" value="80">
+      </div>
+      <div class="brush-setting">
+        <label>רכות <span id="brush-soft-val">60</span></label>
+        <input type="range" id="brush-softness" min="0" max="100" value="60">
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">סימטריה</div>
+      <div id="sym-btns">
+        <button class="sym-btn" data-sym="x">X</button>
+        <button class="sym-btn" data-sym="y">Y</button>
+        <button class="sym-btn" data-sym="z">Z</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">תצוגה</div>
+      <div id="view-toggles">
+        <button class="view-toggle active" id="toggle-shading">הצללה</button>
+        <button class="view-toggle" id="toggle-wire">רשת</button>
+        <button class="view-toggle" id="toggle-vertex">צמתים</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <div class="panel-title">היסטוריה</div>
+      <div id="history-btns">
+        <button class="hist-btn" id="undo-btn">↩ ביטול</button>
+        <button class="hist-btn" id="redo-btn">↪ חזור</button>
+      </div>
+    </div>
+
+    <div class="panel-section">
+      <button id="export-btn">ייצוא OBJ ↓</button>
+    </div>
+
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- THREE.JS -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+<script>
+// ═══════════════════════════════════════════════════
+// SCULPTOR 3D — Painter-First Sculpting Engine
+// ═══════════════════════════════════════════════════
+
+const canvas = document.getElementById('three-canvas');
+const wrap = document.getElementById('canvas-wrap');
+
+// --- Renderer ---
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputEncoding = THREE.sRGBEncoding;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+renderer.setClearColor(0x0e0c09);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x0e0c09, 0.04);
+
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+camera.position.set(0, 1, 3.5);
+camera.lookAt(0, 0, 0);
+
+// --- Lights ---
+const ambLight = new THREE.AmbientLight(0xfff8e8, 0.4);
+scene.add(ambLight);
+const keyLight = new THREE.DirectionalLight(0xfff0d0, 1.8);
+keyLight.position.set(3, 5, 4);
+keyLight.castShadow = true;
+keyLight.shadow.mapSize.set(2048, 2048);
+scene.add(keyLight);
+const fillLight = new THREE.DirectionalLight(0x8fbcbb, 0.5);
+fillLight.position.set(-3, 2, -2);
+scene.add(fillLight);
+const rimLight = new THREE.DirectionalLight(0xc8a96e, 0.6);
+rimLight.position.set(0, -2, -3);
+scene.add(rimLight);
+
+// Grid floor
+const gridHelper = new THREE.GridHelper(10, 20, 0x3a3020, 0x2a2215);
+gridHelper.position.y = -1.2;
+gridHelper.material.opacity = 0.4;
+gridHelper.material.transparent = true;
+scene.add(gridHelper);
+
+// ── STATE ──────────────────────────────────────────
+let currentTool = 'paint';
+let currentColor = new THREE.Color(0xc4622d);
+let brushSize = 30;
+let brushStrength = 0.8;
+let brushSoftness = 0.6;
+let symmetry = { x: false, y: false, z: false };
+let showWire = false;
+let showVertex = false;
+let showShading = true;
+let meshType = 'sphere';
+
+// Orbit state
+let orbiting = false, panning = false;
+let orbitStart = { x: 0, y: 0 };
+let spherical = { theta: 0.4, phi: Math.PI / 3, r: 3.5 };
+let panOffset = new THREE.Vector3(0, 0, 0);
+
+// Undo stack
+const undoStack = [];
+const redoStack = [];
+
+// ── MESH SETUP ─────────────────────────────────────
+let mesh, wireMesh, geo, basePosArray, baseColorArray;
+
+function buildMesh(type) {
+  if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+  if (wireMesh) { scene.remove(wireMesh); wireMesh.geometry.dispose(); }
+  undoStack.length = 0; redoStack.length = 0;
+
+  let baseGeo;
+  const S = 80;
+  switch(type) {
+    case 'sphere':    baseGeo = new THREE.SphereGeometry(1, S, S); break;
+    case 'plane':     baseGeo = new THREE.PlaneGeometry(2, 2, S, S); break;
+    case 'box':       baseGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6, S, S, S); break;
+    case 'torus':     baseGeo = new THREE.TorusGeometry(0.8, 0.4, S/2, S); break;
+    case 'cylinder':  baseGeo = new THREE.CylinderGeometry(0.7, 0.7, 1.8, S, S); break;
+    default:          baseGeo = new THREE.SphereGeometry(1, S, S);
+  }
+
+  geo = baseGeo.toNonIndexed();
+  const count = geo.attributes.position.count;
+
+  // Vertex colors
+  const colors = new Float32Array(count * 3);
+  const baseC = new THREE.Color(0x9e8c7a);
+  for (let i = 0; i < count; i++) {
+    colors[i*3] = baseC.r;
+    colors[i*3+1] = baseC.g;
+    colors[i*3+2] = baseC.b;
+  }
+  geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  // Save base positions for smoothing reference
+  basePosArray = geo.attributes.position.array.slice();
+  baseColorArray = geo.attributes.color.array.slice();
+
+  const mat = new THREE.MeshStandardMaterial({
+    vertexColors: true,
+    roughness: 0.65,
+    metalness: 0.05,
+    flatShading: false,
+  });
+
+  mesh = new THREE.Mesh(geo, mat);
+  mesh.castShadow = true;
+  mesh.receiveShadow = true;
+  scene.add(mesh);
+
+  // Wireframe
+  const wireGeo = new THREE.WireframeGeometry(geo);
+  const wireMat = new THREE.LineBasicMaterial({ color: 0x4a3f30, transparent: true, opacity: 0.3 });
+  wireMesh = new THREE.LineSegments(wireGeo, wireMat);
+  wireMesh.visible = showWire;
+  scene.add(wireMesh);
+}
+
+buildMesh('sphere');
+
+// ── RAYCASTER ──────────────────────────────────────
+const raycaster = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+
+function getCanvasSize() {
+  return { w: wrap.clientWidth, h: wrap.clientHeight };
+}
+
+function updateMouse(e) {
+  const rect = canvas.getBoundingClientRect();
+  mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+  mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+}
+
+function getMeshHit() {
+  raycaster.setFromCamera(mouse, camera);
+  const hits = raycaster.intersectObject(mesh);
+  return hits.length > 0 ? hits[0] : null;
+}
+
+// ── BRUSH OPERATIONS ──────────────────────────────
+function falloff(dist, radius, softness) {
+  const r = dist / radius;
+  if (r >= 1) return 0;
+  const soft = Math.max(0.01, softness);
+  if (r < 1 - soft) return 1;
+  const t = (r - (1 - soft)) / soft;
+  return 1 - t * t * (3 - 2 * t); // smoothstep
+}
+
+function applyBrush(hit) {
+  if (!hit) return;
+  const pos = hit.point;
+  const posArr = geo.attributes.position.array;
+  const colArr = geo.attributes.color.array;
+  const normal = hit.face.normal.clone().transformDirection(mesh.matrixWorld);
+
+  const worldRadius = brushSize / 100;
+  const str = brushStrength;
+  const soft = brushSoftness;
+  const changed = false;
+
+  const applyToPoint = (px, py, pz) => {
+    const vx = new THREE.Vector3();
+    for (let i = 0; i < posArr.length; i += 3) {
+      vx.set(posArr[i], posArr[i+1], posArr[i+2]);
+      vx.applyMatrix4(mesh.matrixWorld);
+      const dist = vx.distanceTo(new THREE.Vector3(px, py, pz));
+      if (dist >= worldRadius) continue;
+      const f = falloff(dist, worldRadius, soft);
+      const amt = f * str;
+
+      if (currentTool === 'paint') {
+        colArr[i]   += (currentColor.r - colArr[i])   * amt * 0.4;
+        colArr[i+1] += (currentColor.g - colArr[i+1]) * amt * 0.4;
+        colArr[i+2] += (currentColor.b - colArr[i+2]) * amt * 0.4;
+      } else if (currentTool === 'erase') {
+        const bc = new THREE.Color(0x9e8c7a);
+        colArr[i]   += (bc.r - colArr[i])   * amt * 0.3;
+        colArr[i+1] += (bc.g - colArr[i+1]) * amt * 0.3;
+        colArr[i+2] += (bc.b - colArr[i+2]) * amt * 0.3;
+      } else if (currentTool === 'sculpt_pull') {
+        const lpos = vx.clone().sub(mesh.position);
+        posArr[i]   += normal.x * amt * 0.015;
+        posArr[i+1] += normal.y * amt * 0.015;
+        posArr[i+2] += normal.z * amt * 0.015;
+      } else if (currentTool === 'sculpt_push') {
+        posArr[i]   -= normal.x * amt * 0.015;
+        posArr[i+1] -= normal.y * amt * 0.015;
+        posArr[i+2] -= normal.z * amt * 0.015;
+      } else if (currentTool === 'sculpt_smooth') {
+        posArr[i]   += (basePosArray[i]   - posArr[i])   * amt * 0.15;
+        posArr[i+1] += (basePosArray[i+1] - posArr[i+1]) * amt * 0.15;
+        posArr[i+2] += (basePosArray[i+2] - posArr[i+2]) * amt * 0.15;
+      } else if (currentTool === 'sculpt_flatten') {
+        const proj = new THREE.Vector3(posArr[i], posArr[i+1], posArr[i+2]);
+        const toCenter = proj.dot(normal);
+        posArr[i]   -= normal.x * toCenter * amt * 0.1;
+        posArr[i+1] -= normal.y * toCenter * amt * 0.1;
+        posArr[i+2] -= normal.z * toCenter * amt * 0.1;
+      } else if (currentTool === 'sculpt_pinch') {
+        const toHit = new THREE.Vector3(px - posArr[i]*1, py - posArr[i+1], pz - posArr[i+2]);
+        posArr[i]   += toHit.x * amt * 0.15;
+        posArr[i+1] += toHit.y * amt * 0.15;
+        posArr[i+2] += toHit.z * amt * 0.15;
+      }
+    }
+  };
+
+  applyToPoint(pos.x, pos.y, pos.z);
+
+  // Symmetry
+  if (symmetry.x) applyToPoint(-pos.x, pos.y, pos.z);
+  if (symmetry.y) applyToPoint(pos.x, -pos.y, pos.z);
+  if (symmetry.z) applyToPoint(pos.x, pos.y, -pos.z);
+
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  geo.computeVertexNormals();
+
+  // Update wireframe
+  if (wireMesh) {
+    wireMesh.geometry.dispose();
+    const newWire = new THREE.WireframeGeometry(geo);
+    wireMesh.geometry = newWire;
+  }
+}
+
+// ── UNDO/REDO ──────────────────────────────────────
+let strokeBuffer = null;
+
+function saveStateStart() {
+  strokeBuffer = {
+    pos: geo.attributes.position.array.slice(),
+    col: geo.attributes.color.array.slice()
+  };
+}
+
+function saveStateEnd() {
+  if (!strokeBuffer) return;
+  undoStack.push(strokeBuffer);
+  if (undoStack.length > 30) undoStack.shift();
+  redoStack.length = 0;
+  strokeBuffer = null;
+}
+
+function undo() {
+  if (!undoStack.length) return;
+  const s = undoStack.pop();
+  redoStack.push({ pos: geo.attributes.position.array.slice(), col: geo.attributes.color.array.slice() });
+  geo.attributes.position.array.set(s.pos);
+  geo.attributes.color.array.set(s.col);
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  geo.computeVertexNormals();
+  showToast('ביטול פעולה');
+}
+
+function redo() {
+  if (!redoStack.length) return;
+  const s = redoStack.pop();
+  undoStack.push({ pos: geo.attributes.position.array.slice(), col: geo.attributes.color.array.slice() });
+  geo.attributes.position.array.set(s.pos);
+  geo.attributes.color.array.set(s.col);
+  geo.attributes.position.needsUpdate = true;
+  geo.attributes.color.needsUpdate = true;
+  geo.computeVertexNormals();
+  showToast('חזרה קדימה');
+}
+
+// ── CAMERA CONTROL ─────────────────────────────────
+function updateCamera() {
+  const x = spherical.r * Math.sin(spherical.phi) * Math.sin(spherical.theta);
+  const y = spherical.r * Math.cos(spherical.phi);
+  const z = spherical.r * Math.sin(spherical.phi) * Math.cos(spherical.theta);
+  camera.position.set(x + panOffset.x, y + panOffset.y, z + panOffset.z);
+  camera.lookAt(panOffset.x, panOffset.y, panOffset.z);
+}
+
+// ── PAINT INTERACTION ─────────────────────────────
+let isPainting = false;
+let isOrbitDrag = false;
+let isPanDrag = false;
+let lastMouse = { x: 0, y: 0 };
+const brushCursor = document.getElementById('brush-cursor');
+
+canvas.addEventListener('mousemove', (e) => {
+  updateMouse(e);
+  brushCursor.style.left = e.clientX - wrap.getBoundingClientRect().left + 'px';
+  brushCursor.style.top = e.clientY - wrap.getBoundingClientRect().top + 'px';
+  brushCursor.style.display = 'block';
+
+  if (isPainting) {
+    applyBrush(getMeshHit());
+  }
+
+  if (isOrbitDrag) {
+    const dx = e.clientX - lastMouse.x;
+    const dy = e.clientY - lastMouse.y;
+    spherical.theta -= dx * 0.008;
+    spherical.phi = Math.max(0.1, Math.min(Math.PI - 0.1, spherical.phi + dy * 0.008));
+    updateCamera();
+  }
+
+  if (isPanDrag) {
+    const dx = e.clientX - lastMouse.x;
+    const dy = e.clientY - lastMouse.y;
+    const right = new THREE.Vector3();
+    const up = new THREE.Vector3();
+    camera.getWorldDirection(new THREE.Vector3());
+    right.crossVectors(camera.getWorldDirection(new THREE.Vector3()), camera.up).normalize();
+    up.copy(camera.up);
+    panOffset.addScaledVector(right, -dx * 0.003);
+    panOffset.addScaledVector(up, dy * 0.003);
+    updateCamera();
+  }
+
+  lastMouse.x = e.clientX;
+  lastMouse.y = e.clientY;
+});
+
+canvas.addEventListener('mousedown', (e) => {
+  e.preventDefault();
+  if (e.button === 2 || (e.button === 0 && e.altKey)) {
+    if (e.shiftKey) { isPanDrag = true; }
+    else { isOrbitDrag = true; }
+    lastMouse.x = e.clientX;
+    lastMouse.y = e.clientY;
+    return;
+  }
+  if (e.button === 0) {
+    const tool = currentTool;
+    if (['rotate','pan','zoom'].includes(tool)) {
+      if (tool === 'rotate') { isOrbitDrag = true; lastMouse.x = e.clientX; lastMouse.y = e.clientY; }
+      if (tool === 'pan') { isPanDrag = true; lastMouse.x = e.clientX; lastMouse.y = e.clientY; }
+      return;
+    }
+    isPainting = true;
+    saveStateStart();
+    applyBrush(getMeshHit());
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (isPainting) saveStateEnd();
+  isPainting = false;
+  isOrbitDrag = false;
+  isPanDrag = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  brushCursor.style.display = 'none';
+  if (isPainting) saveStateEnd();
+  isPainting = false;
+  isOrbitDrag = false;
+  isPanDrag = false;
+});
+
+canvas.addEventListener('wheel', (e) => {
+  spherical.r = Math.max(0.5, Math.min(10, spherical.r + e.deltaY * 0.005));
+  updateCamera();
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('contextmenu', e => e.preventDefault());
+
+// ── COLOR WHEEL ────────────────────────────────────
+const cwCanvas = document.getElementById('color-canvas');
+const cwCtx = cwCanvas.getContext('2d');
+let pickedHue = 20, pickedSat = 0.7, pickedVal = 0.85;
+
+function drawColorWheel() {
+  const cx = cwCanvas.width / 2, cy = cwCanvas.height / 2;
+  const r = cx - 4;
+  cwCtx.clearRect(0, 0, cwCanvas.width, cwCanvas.height);
+
+  // Draw hue+saturation wheel
+  for (let angle = 0; angle < 360; angle += 1) {
+    const startAngle = (angle - 1) * Math.PI / 180;
+    const endAngle = (angle + 1) * Math.PI / 180;
+    const grad = cwCtx.createRadialGradient(cx, cy, 0, cx, cy, r);
+    grad.addColorStop(0, `hsl(${angle},0%,${pickedVal*100}%)`);
+    grad.addColorStop(1, `hsl(${angle},100%,${pickedVal*50}%)`);
+    cwCtx.beginPath();
+    cwCtx.moveTo(cx, cy);
+    cwCtx.arc(cx, cy, r, startAngle, endAngle);
+    cwCtx.closePath();
+    cwCtx.fillStyle = grad;
+    cwCtx.fill();
+  }
+
+  // Selector dot
+  const sa = (pickedHue - 90) * Math.PI / 180;
+  const sr = pickedSat * r;
+  const sx = cx + Math.cos(sa) * sr;
+  const sy = cy + Math.sin(sa) * sr;
+  cwCtx.beginPath();
+  cwCtx.arc(sx, sy, 6, 0, Math.PI * 2);
+  cwCtx.strokeStyle = '#fff';
+  cwCtx.lineWidth = 2;
+  cwCtx.stroke();
+  cwCtx.fillStyle = `hsl(${pickedHue},${pickedSat*100}%,${pickedVal*50}%)`;
+  cwCtx.fill();
+}
+
+function colorFromHSV(h, s, v) {
+  // HSV to RGB
+  const hi = Math.floor(h / 60) % 6;
+  const f = h / 60 - Math.floor(h / 60);
+  const p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  let r, g, b;
+  switch(hi) {
+    case 0: r=v; g=t; b=p; break;
+    case 1: r=q; g=v; b=p; break;
+    case 2: r=p; g=v; b=t; break;
+    case 3: r=p; g=q; b=v; break;
+    case 4: r=t; g=p; b=v; break;
+    default: r=v; g=p; b=q;
+  }
+  return new THREE.Color(r, g, b);
+}
+
+function updateCurrentColor() {
+  currentColor = colorFromHSV(pickedHue, pickedSat, pickedVal);
+  const hex = '#' + currentColor.getHexString();
+  document.getElementById('current-color-swatch').style.background = hex;
+  document.getElementById('value-slider').style.background =
+    `linear-gradient(to right, #000, hsl(${pickedHue}, ${pickedSat*100}%, 50%))`;
+  drawColorWheel();
+}
+
+function pickFromWheel(e) {
+  const rect = cwCanvas.getBoundingClientRect();
+  const cx = cwCanvas.width / 2, cy = cwCanvas.height / 2;
+  const r = cx - 4;
+  const px = (e.clientX - rect.left) / rect.width * cwCanvas.width - cx;
+  const py = (e.clientY - rect.top) / rect.height * cwCanvas.height - cy;
+  const dist = Math.sqrt(px*px + py*py);
+  if (dist > r) return;
+  pickedSat = Math.min(dist / r, 1);
+  pickedHue = (Math.atan2(py, px) * 180 / Math.PI + 90 + 360) % 360;
+  updateCurrentColor();
+}
+
+let pickingColor = false;
+cwCanvas.addEventListener('mousedown', (e) => { pickingColor = true; pickFromWheel(e); });
+cwCanvas.addEventListener('mousemove', (e) => { if (pickingColor) pickFromWheel(e); });
+document.addEventListener('mouseup', () => { pickingColor = false; });
+
+document.getElementById('value-slider').addEventListener('input', function() {
+  pickedVal = this.value / 100;
+  document.getElementById('value-slider').style.setProperty('--thumb-color', '#fff');
+  updateCurrentColor();
+});
+
+// Init color
+updateCurrentColor();
+
+// ── SWATCHES ──────────────────────────────────────
+const paletteColors = [
+  '#c4622d','#e8956d','#f4c89a','#7a9e7e','#4a7c59','#2d5a3d',
+  '#8fbcbb','#5e81ac','#3b4f7a','#b48ead','#8a5a7a','#4a2a4a',
+  '#ebcb8b','#c8a96e','#8a6a3a','#d08770','#bf616a','#7a2a2a',
+  '#eceff4','#d8dee9','#4c566a','#3b4252','#2e3440','#1a1410',
+];
+
+const swatchesEl = document.getElementById('swatches');
+paletteColors.forEach(hex => {
+  const el = document.createElement('div');
+  el.className = 'swatch';
+  el.style.background = hex;
+  el.addEventListener('click', () => {
+    document.querySelectorAll('.swatch').forEach(s => s.classList.remove('selected'));
+    el.classList.add('selected');
+    currentColor = new THREE.Color(hex);
+    // Update HSV pickers
+    const r = currentColor.r, g = currentColor.g, b = currentColor.b;
+    const mx = Math.max(r,g,b), mn = Math.min(r,g,b), d = mx-mn;
+    pickedVal = mx;
+    pickedSat = mx === 0 ? 0 : d/mx;
+    if (d === 0) pickedHue = 0;
+    else if (mx === r) pickedHue = (60 * ((g-b)/d + 6)) % 360;
+    else if (mx === g) pickedHue = 60 * ((b-r)/d + 2);
+    else pickedHue = 60 * ((r-g)/d + 4);
+    document.getElementById('value-slider').value = pickedVal * 100;
+    updateCurrentColor();
+  });
+  swatchesEl.appendChild(el);
+});
+
+// ── TOOL BUTTONS ──────────────────────────────────
+document.querySelectorAll('.tool-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTool = btn.dataset.tool;
+    const modeText = document.getElementById('mode-text');
+    const modeDot = document.getElementById('mode-dot');
+    if (['paint','erase'].includes(currentTool)) {
+      modeText.textContent = currentTool === 'paint' ? 'PAINT' : 'ERASE';
+      modeDot.style.background = currentTool === 'paint' ? '#7a9e7e' : '#bf616a';
+      modeDot.style.boxShadow = `0 0 8px ${modeDot.style.background}`;
+    } else if (currentTool.startsWith('sculpt')) {
+      modeText.textContent = 'SCULPT';
+      modeDot.style.background = '#8fbcbb';
+      modeDot.style.boxShadow = `0 0 8px #8fbcbb`;
+    } else {
+      modeText.textContent = 'NAVIGATE';
+      modeDot.style.background = '#c8a96e';
+      modeDot.style.boxShadow = `0 0 8px #c8a96e`;
+    }
+  });
+});
+
+// ── MESH SWITCH ───────────────────────────────────
+document.querySelectorAll('.mesh-opt').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.mesh-opt').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    meshType = btn.dataset.shape;
+    buildMesh(meshType);
+    showToast('מש חדש: ' + btn.textContent);
+  });
+});
+
+// ── BRUSH CONTROLS ────────────────────────────────
+document.getElementById('brush-size').addEventListener('input', function() {
+  brushSize = +this.value;
+  document.getElementById('brush-size-val').textContent = this.value;
+  brushCursor.style.width = brushSize + 'px';
+  brushCursor.style.height = brushSize + 'px';
+});
+document.getElementById('brush-strength').addEventListener('input', function() {
+  brushStrength = this.value / 100;
+  document.getElementById('brush-str-val').textContent = this.value;
+});
+document.getElementById('brush-softness').addEventListener('input', function() {
+  brushSoftness = this.value / 100;
+  document.getElementById('brush-soft-val').textContent = this.value;
+});
+
+// Update brush cursor size
+brushCursor.style.width = brushSize + 'px';
+brushCursor.style.height = brushSize + 'px';
+
+// ── SYMMETRY ──────────────────────────────────────
+document.querySelectorAll('.sym-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const axis = btn.dataset.sym;
+    symmetry[axis] = !symmetry[axis];
+    btn.classList.toggle('active', symmetry[axis]);
+  });
+});
+
+// ── VIEW TOGGLES ──────────────────────────────────
+document.getElementById('toggle-shading').addEventListener('click', function() {
+  showShading = !showShading;
+  this.classList.toggle('active', showShading);
+  if (mesh) mesh.material.wireframe = !showShading && !showWire;
+});
+document.getElementById('toggle-wire').addEventListener('click', function() {
+  showWire = !showWire;
+  this.classList.toggle('active', showWire);
+  if (wireMesh) wireMesh.visible = showWire;
+});
+document.getElementById('toggle-vertex').addEventListener('click', function() {
+  showVertex = !showVertex;
+  this.classList.toggle('active', showVertex);
+  if (mesh) {
+    mesh.material.flatShading = showVertex;
+    mesh.material.needsUpdate = true;
+  }
+});
+
+// ── UNDO/REDO BUTTONS ──────────────────────────────
+document.getElementById('undo-btn').addEventListener('click', undo);
+document.getElementById('redo-btn').addEventListener('click', redo);
+
+// ── RESET ──────────────────────────────────────────
+document.getElementById('reset-btn').addEventListener('click', () => {
+  buildMesh(meshType);
+  showToast('הסצנה אופסה');
+});
+
+// ── KEYBOARD SHORTCUTS ─────────────────────────────
+document.addEventListener('keydown', (e) => {
+  if (e.target.tagName === 'INPUT') return;
+  switch(e.key.toLowerCase()) {
+    case 'b': document.querySelector('[data-tool="paint"]').click(); break;
+    case 'e': document.querySelector('[data-tool="erase"]').click(); break;
+    case 'p': document.querySelector('[data-tool="sculpt_pull"]').click(); break;
+    case 'd': document.querySelector('[data-tool="sculpt_push"]').click(); break;
+    case 's': document.querySelector('[data-tool="sculpt_smooth"]').click(); break;
+    case 'f': document.querySelector('[data-tool="sculpt_flatten"]').click(); break;
+    case 'n': document.querySelector('[data-tool="sculpt_pinch"]').click(); break;
+    case 'r': document.querySelector('[data-tool="rotate"]').click(); break;
+    case 'g': document.querySelector('[data-tool="pan"]').click(); break;
+    case 'z':
+      if (e.ctrlKey || e.metaKey) { e.shiftKey ? redo() : undo(); }
+      else document.querySelector('[data-tool="zoom"]').click();
+      break;
+    case '[':
+      brushSize = Math.max(5, brushSize - 5);
+      document.getElementById('brush-size').value = brushSize;
+      document.getElementById('brush-size-val').textContent = brushSize;
+      brushCursor.style.width = brushSize + 'px';
+      brushCursor.style.height = brushSize + 'px';
+      break;
+    case ']':
+      brushSize = Math.min(120, brushSize + 5);
+      document.getElementById('brush-size').value = brushSize;
+      document.getElementById('brush-size-val').textContent = brushSize;
+      brushCursor.style.width = brushSize + 'px';
+      brushCursor.style.height = brushSize + 'px';
+      break;
+  }
+});
+
+// ── OBJ EXPORT ─────────────────────────────────────
+document.getElementById('export-btn').addEventListener('click', () => {
+  const posArr = geo.attributes.position.array;
+  const normalArr = geo.attributes.normal?.array;
+  const colArr = geo.attributes.color.array;
+  let obj = '# Sculptor 3D Export\n# Vertex colors encoded in comments\nmtllib model.mtl\n\n';
+
+  for (let i = 0; i < posArr.length; i += 3) {
+    obj += `v ${posArr[i].toFixed(5)} ${posArr[i+1].toFixed(5)} ${posArr[i+2].toFixed(5)} ${colArr[i].toFixed(4)} ${colArr[i+1].toFixed(4)} ${colArr[i+2].toFixed(4)}\n`;
+  }
+  if (normalArr) {
+    for (let i = 0; i < normalArr.length; i += 3)
+      obj += `vn ${normalArr[i].toFixed(5)} ${normalArr[i+1].toFixed(5)} ${normalArr[i+2].toFixed(5)}\n`;
+  }
+  const vCount = posArr.length / 3;
+  for (let i = 0; i < vCount; i += 3) {
+    const a = i+1, b = i+2, c = i+3;
+    if (normalArr) obj += `f ${a}//${a} ${b}//${b} ${c}//${c}\n`;
+    else obj += `f ${a} ${b} ${c}\n`;
+  }
+
+  const blob = new Blob([obj], { type: 'text/plain' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sculptor_model.obj';
+  a.click();
+  showToast('OBJ יוצא בהצלחה!');
+});
+
+// ── TOAST ──────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2000);
+}
+
+// ── RESIZE ─────────────────────────────────────────
+function resize() {
+  const w = wrap.clientWidth, h = wrap.clientHeight;
+  renderer.setSize(w, h);
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ── RENDER LOOP ────────────────────────────────────
+function animate() {
+  requestAnimationFrame(animate);
+  // Subtle idle rotation if not painting
+  if (!isPainting && !isOrbitDrag && !isPanDrag) {
+    // none — artist is in control
+  }
+  renderer.render(scene, camera);
+}
+
+updateCamera();
+animate();
+
+// Initial toast
+setTimeout(() => showToast('ברוך הבא ל-Sculptor!'), 600);
+</script>
+</body>
+</html>
