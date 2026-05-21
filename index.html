@@ -391,8 +391,8 @@
   #right-panel::-webkit-scrollbar-track { background: transparent; }
   #right-panel::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
-  /* Save export */
-  #export-btn {
+  /* Save export / import */
+  #export-btn, #import-btn {
     width: 100%;
     background: rgba(196,98,45,0.15);
     border: 1px solid rgba(196,98,45,0.4);
@@ -406,7 +406,9 @@
     transition: all 0.15s;
     text-transform: uppercase;
   }
-  #export-btn:hover { background: rgba(196,98,45,0.25); color: var(--paper); }
+  #export-btn:hover, #import-btn:hover { background: rgba(196,98,45,0.25); color: var(--paper); }
+  #import-btn, #import-stl-btn { background: rgba(143,188,187,0.1); border-color: rgba(143,188,187,0.35); color: #8fbcbb; margin-bottom: 6px; }
+  #import-btn:hover, #import-stl-btn:hover { background: rgba(143,188,187,0.2); color: var(--paper); }
 
   /* Toast */
   #toast {
@@ -462,6 +464,7 @@
     <div class="tool-sep"></div>
     <button class="tool-btn" data-tool="sculpt_pull" data-tip="משיכה (P)">↑</button>
     <button class="tool-btn" data-tool="sculpt_push" data-tip="דחיפה (D)">↓</button>
+    <button class="tool-btn" data-tool="sculpt_grab" data-tip="יצירה (G)">✚</button>
     <button class="tool-btn" data-tool="sculpt_smooth" data-tip="החלקה (S)">≈</button>
     <button class="tool-btn" data-tool="sculpt_flatten" data-tip="השטחה (F)">▬</button>
     <button class="tool-btn" data-tool="sculpt_pinch" data-tip="צביטה (N)">⟨⟩</button>
@@ -541,7 +544,12 @@
     </div>
 
     <div class="panel-section">
+      <button id="import-btn">ייבוא OBJ ↑</button>
+      <button id="import-stl-btn">ייבוא STL ↑</button>
       <button id="export-btn">ייצוא OBJ ↓</button>
+      <button id="export-stl-btn">ייצוא STL ↓</button>
+      <input type="file" id="import-file" accept=".obj" style="display:none">
+      <input type="file" id="import-stl-file" accept=".stl" style="display:none">
     </div>
 
   </div>
@@ -571,9 +579,8 @@ renderer.toneMappingExposure = 1.1;
 renderer.setClearColor(0x0e0c09);
 
 const scene = new THREE.Scene();
-scene.fog = new THREE.FogExp2(0x0e0c09, 0.04);
 
-const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100);
+const camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
 camera.position.set(0, 1, 3.5);
 camera.lookAt(0, 0, 0);
 
@@ -749,6 +756,13 @@ function applyBrush(hit) {
         posArr[i]   -= normal.x * amt * 0.015;
         posArr[i+1] -= normal.y * amt * 0.015;
         posArr[i+2] -= normal.z * amt * 0.015;
+      } else if (currentTool === 'sculpt_grab') {
+        posArr[i]   += normal.x * amt * 0.025;
+        posArr[i+1] += normal.y * amt * 0.025;
+        posArr[i+2] += normal.z * amt * 0.025;
+        colArr[i]   += (currentColor.r - colArr[i])   * amt * 0.5;
+        colArr[i+1] += (currentColor.g - colArr[i+1]) * amt * 0.5;
+        colArr[i+2] += (currentColor.b - colArr[i+2]) * amt * 0.5;
       } else if (currentTool === 'sculpt_smooth') {
         posArr[i]   += (basePosArray[i]   - posArr[i])   * amt * 0.15;
         posArr[i+1] += (basePosArray[i+1] - posArr[i+1]) * amt * 0.15;
@@ -918,7 +932,7 @@ canvas.addEventListener('mouseleave', () => {
 });
 
 canvas.addEventListener('wheel', (e) => {
-  spherical.r = Math.max(0.5, Math.min(10, spherical.r + e.deltaY * 0.005));
+  spherical.r = Math.max(0.01, spherical.r + e.deltaY * 0.005);
   updateCamera();
   e.preventDefault();
 }, { passive: false });
@@ -1155,7 +1169,10 @@ document.addEventListener('keydown', (e) => {
     case 'f': document.querySelector('[data-tool="sculpt_flatten"]').click(); break;
     case 'n': document.querySelector('[data-tool="sculpt_pinch"]').click(); break;
     case 'r': document.querySelector('[data-tool="rotate"]').click(); break;
-    case 'g': document.querySelector('[data-tool="pan"]').click(); break;
+    case 'g': 
+      if (e.ctrlKey || e.metaKey) return;
+      document.querySelector('[data-tool="sculpt_grab"]').click(); 
+      break;
     case 'z':
       if (e.ctrlKey || e.metaKey) { e.shiftKey ? redo() : undo(); }
       else document.querySelector('[data-tool="zoom"]').click();
@@ -1175,6 +1192,85 @@ document.addEventListener('keydown', (e) => {
       brushCursor.style.height = brushSize + 'px';
       break;
   }
+});
+
+// ── OBJ IMPORT ─────────────────────────────────────
+document.getElementById('import-btn').addEventListener('click', () => {
+  document.getElementById('import-file').click();
+});
+
+document.getElementById('import-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const lines = ev.target.result.split('\n');
+    const positions = [], colors = [], normals = [], faces = [];
+
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts[0] === 'v' && parts.length >= 6) {
+        positions.push(+parts[1], +parts[2], +parts[3]);
+        colors.push(+parts[4], +parts[5], +parts[6] || 0);
+      } else if (parts[0] === 'vn') {
+        normals.push(+parts[1], +parts[2], +parts[3]);
+      } else if (parts[0] === 'f') {
+        const idx = parts.slice(1).map(p => parseInt(p.split('//')[0]) - 1);
+        for (let i = 1; i < idx.length - 1; i++)
+          faces.push(idx[0], idx[i], idx[i+1]);
+      }
+    }
+
+    if (positions.length === 0) { showToast('קובץ OBJ לא תקין'); return; }
+
+    // Rebuild geometry from imported data
+    if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+    if (wireMesh) { scene.remove(wireMesh); wireMesh.geometry.dispose(); }
+    undoStack.length = 0; redoStack.length = 0;
+
+    const newGeo = new THREE.BufferGeometry();
+    let posFlat, colFlat;
+
+    if (faces.length > 0) {
+      // Indexed — expand to flat
+      posFlat = new Float32Array(faces.length * 3);
+      colFlat = new Float32Array(faces.length * 3);
+      faces.forEach((vi, i) => {
+        posFlat[i*3]   = positions[vi*3];
+        posFlat[i*3+1] = positions[vi*3+1];
+        posFlat[i*3+2] = positions[vi*3+2];
+        colFlat[i*3]   = colors[vi*3]   || 0.62;
+        colFlat[i*3+1] = colors[vi*3+1] || 0.55;
+        colFlat[i*3+2] = colors[vi*3+2] || 0.48;
+      });
+    } else {
+      posFlat = new Float32Array(positions);
+      colFlat = new Float32Array(colors.length ? colors : positions.length);
+      if (!colors.length) colFlat.fill(0.62);
+    }
+
+    newGeo.setAttribute('position', new THREE.BufferAttribute(posFlat, 3));
+    newGeo.setAttribute('color', new THREE.BufferAttribute(colFlat, 3));
+    newGeo.computeVertexNormals();
+    geo = newGeo;
+    basePosArray = posFlat.slice();
+    baseColorArray = colFlat.slice();
+
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.05 });
+    mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true;
+    mesh.receiveShadow = true;
+    scene.add(mesh);
+
+    const wireGeo = new THREE.WireframeGeometry(geo);
+    wireMesh = new THREE.LineSegments(wireGeo, new THREE.LineBasicMaterial({ color: 0x4a3f30, transparent: true, opacity: 0.3 }));
+    wireMesh.visible = showWire;
+    scene.add(wireMesh);
+
+    showToast('OBJ יובא בהצלחה!');
+  };
+  reader.readAsText(file);
+  e.target.value = '';
 });
 
 // ── OBJ EXPORT ─────────────────────────────────────
@@ -1204,6 +1300,121 @@ document.getElementById('export-btn').addEventListener('click', () => {
   a.download = 'sculptor_model.obj';
   a.click();
   showToast('OBJ יוצא בהצלחה!');
+});
+
+// ── STL IMPORT ─────────────────────────────────────
+document.getElementById('import-stl-btn').addEventListener('click', () => {
+  document.getElementById('import-stl-file').click();
+});
+
+document.getElementById('import-stl-file').addEventListener('change', (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = (ev) => {
+    const buf = ev.target.result;
+    const view = new DataView(buf);
+    let posFlat, colFlat;
+
+    // Check binary vs ASCII: binary STL starts with 80-byte header then uint32 triangle count
+    const isBinary = (() => {
+      if (buf.byteLength < 84) return false;
+      const triCount = view.getUint32(80, true);
+      return buf.byteLength === 84 + triCount * 50;
+    })();
+
+    if (isBinary) {
+      const triCount = view.getUint32(80, true);
+      posFlat = new Float32Array(triCount * 9);
+      colFlat = new Float32Array(triCount * 9);
+      const baseC = new THREE.Color(0x9e8c7a);
+      for (let i = 0; i < triCount; i++) {
+        const off = 84 + i * 50 + 12; // skip normal
+        for (let v = 0; v < 3; v++) {
+          const vi = (i * 3 + v) * 3;
+          posFlat[vi]   = view.getFloat32(off + v*12,     true);
+          posFlat[vi+1] = view.getFloat32(off + v*12 + 4, true);
+          posFlat[vi+2] = view.getFloat32(off + v*12 + 8, true);
+          colFlat[vi] = baseC.r; colFlat[vi+1] = baseC.g; colFlat[vi+2] = baseC.b;
+        }
+      }
+    } else {
+      // ASCII STL
+      const text = new TextDecoder().decode(buf);
+      const verts = [...text.matchAll(/vertex\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)\s+([\d.eE+\-]+)/g)];
+      posFlat = new Float32Array(verts.length * 3);
+      colFlat = new Float32Array(verts.length * 3);
+      const baseC = new THREE.Color(0x9e8c7a);
+      verts.forEach((m, i) => {
+        posFlat[i*3] = +m[1]; posFlat[i*3+1] = +m[2]; posFlat[i*3+2] = +m[3];
+        colFlat[i*3] = baseC.r; colFlat[i*3+1] = baseC.g; colFlat[i*3+2] = baseC.b;
+      });
+    }
+
+    if (posFlat.length === 0) { showToast('קובץ STL לא תקין'); return; }
+
+    if (mesh) { scene.remove(mesh); mesh.geometry.dispose(); mesh.material.dispose(); }
+    if (wireMesh) { scene.remove(wireMesh); wireMesh.geometry.dispose(); }
+    undoStack.length = 0; redoStack.length = 0;
+
+    const newGeo = new THREE.BufferGeometry();
+    newGeo.setAttribute('position', new THREE.BufferAttribute(posFlat, 3));
+    newGeo.setAttribute('color', new THREE.BufferAttribute(colFlat, 3));
+    newGeo.computeVertexNormals();
+    geo = newGeo;
+    basePosArray = posFlat.slice();
+    baseColorArray = colFlat.slice();
+
+    const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.05 });
+    mesh = new THREE.Mesh(geo, mat);
+    mesh.castShadow = true; mesh.receiveShadow = true;
+    scene.add(mesh);
+
+    wireMesh = new THREE.LineSegments(
+      new THREE.WireframeGeometry(geo),
+      new THREE.LineBasicMaterial({ color: 0x4a3f30, transparent: true, opacity: 0.3 })
+    );
+    wireMesh.visible = showWire;
+    scene.add(wireMesh);
+
+    showToast('STL יובא בהצלחה!');
+  };
+  reader.readAsArrayBuffer(file);
+  e.target.value = '';
+});
+
+// ── STL EXPORT ─────────────────────────────────────
+document.getElementById('export-stl-btn').addEventListener('click', () => {
+  const posArr = geo.attributes.position.array;
+  const normalArr = geo.attributes.normal?.array;
+  const triCount = posArr.length / 9;
+  const buf = new ArrayBuffer(84 + triCount * 50);
+  const view = new DataView(buf);
+  // 80-byte header
+  new TextEncoder().encode('Sculptor 3D STL Export').forEach((b, i) => view.setUint8(i, b));
+  view.setUint32(80, triCount, true);
+  for (let i = 0; i < triCount; i++) {
+    const off = 84 + i * 50;
+    const base = i * 9;
+    // Normal (use computed if available, else zero)
+    if (normalArr) {
+      view.setFloat32(off,    normalArr[base],   true);
+      view.setFloat32(off+4,  normalArr[base+1], true);
+      view.setFloat32(off+8,  normalArr[base+2], true);
+    }
+    for (let v = 0; v < 3; v++) {
+      view.setFloat32(off + 12 + v*12,     posArr[base + v*3],   true);
+      view.setFloat32(off + 12 + v*12 + 4, posArr[base + v*3+1], true);
+      view.setFloat32(off + 12 + v*12 + 8, posArr[base + v*3+2], true);
+    }
+    view.setUint16(off + 48, 0, true); // attribute byte count
+  }
+  const blob = new Blob([buf], { type: 'application/octet-stream' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'sculptor_model.stl';
+  a.click();
+  showToast('STL יוצא בהצלחה!');
 });
 
 // ── TOAST ──────────────────────────────────────────
