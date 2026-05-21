@@ -569,10 +569,14 @@ const canvas = document.getElementById('three-canvas');
 const wrap = document.getElementById('canvas-wrap');
 
 // --- Renderer ---
-const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+const renderer = new THREE.WebGLRenderer({ 
+  canvas, 
+  antialias: true, 
+  alpha: false,
+  powerPreference: 'high-performance'
+});
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.shadowMap.enabled = false; // Disable shadows for better performance
 renderer.outputEncoding = THREE.sRGBEncoding;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.1;
@@ -589,8 +593,6 @@ const ambLight = new THREE.AmbientLight(0xfff8e8, 0.4);
 scene.add(ambLight);
 const keyLight = new THREE.DirectionalLight(0xfff0d0, 1.8);
 keyLight.position.set(3, 5, 4);
-keyLight.castShadow = true;
-keyLight.shadow.mapSize.set(2048, 2048);
 scene.add(keyLight);
 const fillLight = new THREE.DirectionalLight(0x8fbcbb, 0.5);
 fillLight.position.set(-3, 2, -2);
@@ -672,8 +674,6 @@ function buildMesh(type) {
   });
 
   mesh = new THREE.Mesh(geo, mat);
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
   scene.add(mesh);
 
   // Wireframe
@@ -726,15 +726,24 @@ function applyBrush(hit) {
   const worldRadius = brushSize / 100;
   const str = brushStrength;
   const soft = brushSoftness;
-  const changed = false;
+  const radiusSq = worldRadius * worldRadius;
+  
+  // Auto-scale strength based on camera distance for consistent feel
+  const camDist = camera.position.distanceTo(mesh.position);
+  const scaleFactor = Math.max(0.001, camDist * 0.01);
 
   const applyToPoint = (px, py, pz) => {
     const vx = new THREE.Vector3();
+    const targetPos = new THREE.Vector3(px, py, pz);
+    
     for (let i = 0; i < posArr.length; i += 3) {
       vx.set(posArr[i], posArr[i+1], posArr[i+2]);
       vx.applyMatrix4(mesh.matrixWorld);
-      const dist = vx.distanceTo(new THREE.Vector3(px, py, pz));
-      if (dist >= worldRadius) continue;
+      
+      const distSq = vx.distanceToSquared(targetPos);
+      if (distSq >= radiusSq) continue;
+      
+      const dist = Math.sqrt(distSq);
       const f = falloff(dist, worldRadius, soft);
       const amt = f * str;
 
@@ -748,18 +757,17 @@ function applyBrush(hit) {
         colArr[i+1] += (bc.g - colArr[i+1]) * amt * 0.3;
         colArr[i+2] += (bc.b - colArr[i+2]) * amt * 0.3;
       } else if (currentTool === 'sculpt_pull') {
-        const lpos = vx.clone().sub(mesh.position);
-        posArr[i]   += normal.x * amt * 0.015;
-        posArr[i+1] += normal.y * amt * 0.015;
-        posArr[i+2] += normal.z * amt * 0.015;
+        posArr[i]   += normal.x * amt * scaleFactor;
+        posArr[i+1] += normal.y * amt * scaleFactor;
+        posArr[i+2] += normal.z * amt * scaleFactor;
       } else if (currentTool === 'sculpt_push') {
-        posArr[i]   -= normal.x * amt * 0.015;
-        posArr[i+1] -= normal.y * amt * 0.015;
-        posArr[i+2] -= normal.z * amt * 0.015;
+        posArr[i]   -= normal.x * amt * scaleFactor;
+        posArr[i+1] -= normal.y * amt * scaleFactor;
+        posArr[i+2] -= normal.z * amt * scaleFactor;
       } else if (currentTool === 'sculpt_grab') {
-        posArr[i]   += normal.x * amt * 0.025;
-        posArr[i+1] += normal.y * amt * 0.025;
-        posArr[i+2] += normal.z * amt * 0.025;
+        posArr[i]   += normal.x * amt * scaleFactor * 1.5;
+        posArr[i+1] += normal.y * amt * scaleFactor * 1.5;
+        posArr[i+2] += normal.z * amt * scaleFactor * 1.5;
         colArr[i]   += (currentColor.r - colArr[i])   * amt * 0.5;
         colArr[i+1] += (currentColor.g - colArr[i+1]) * amt * 0.5;
         colArr[i+2] += (currentColor.b - colArr[i+2]) * amt * 0.5;
@@ -793,8 +801,8 @@ function applyBrush(hit) {
   geo.attributes.color.needsUpdate = true;
   geo.computeVertexNormals();
 
-  // Update wireframe
-  if (wireMesh) {
+  // Update wireframe only if visible (performance optimization)
+  if (wireMesh && showWire) {
     wireMesh.geometry.dispose();
     const newWire = new THREE.WireframeGeometry(geo);
     wireMesh.geometry = newWire;
@@ -1258,8 +1266,6 @@ document.getElementById('import-file').addEventListener('change', (e) => {
 
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.05 });
     mesh = new THREE.Mesh(geo, mat);
-    mesh.castShadow = true;
-    mesh.receiveShadow = true;
     scene.add(mesh);
 
     const wireGeo = new THREE.WireframeGeometry(geo);
@@ -1367,7 +1373,6 @@ document.getElementById('import-stl-file').addEventListener('change', (e) => {
 
     const mat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.65, metalness: 0.05 });
     mesh = new THREE.Mesh(geo, mat);
-    mesh.castShadow = true; mesh.receiveShadow = true;
     scene.add(mesh);
 
     wireMesh = new THREE.LineSegments(
